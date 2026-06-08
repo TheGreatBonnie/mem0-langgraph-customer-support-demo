@@ -14,7 +14,8 @@ The app works in two modes:
 - `DELETE /memories/{user_id}` privacy delete endpoint.
 - `DELETE /memories/{user_id}/{memory_id}` single-memory delete endpoint.
 - `PATCH /memories/{user_id}/{memory_id}/mark-outdated` memory correction endpoint.
-- Browser console at `/` with chat, memory inspection, delete, mark-outdated, and force escalation controls.
+- FastAPI static browser console at `/`.
+- Next.js frontend in `frontend/` with chat, memory inspection, delete, mark-outdated, and force escalation controls.
 
 ## Setup
 
@@ -41,6 +42,40 @@ Open:
 ```text
 http://127.0.0.1:8000
 ```
+
+## Next.js Frontend
+
+Install frontend dependencies:
+
+```bash
+cd frontend
+npm install
+```
+
+Configure the backend proxy in `frontend/.env.local`:
+
+```bash
+SUPPORT_API_BASE_URL=http://127.0.0.1:8000
+```
+
+Run FastAPI and Next.js in separate terminals:
+
+```bash
+uv run uvicorn support_agent.api:app --reload
+```
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+The Next app calls the backend through `/support-api/*`, which is proxied to `SUPPORT_API_BASE_URL` by `frontend/next.config.ts`.
 
 Run tests:
 
