@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Memory-First Support Agent</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">M0</span>
+          <div>
+            <h1>Support Agent</h1>
+            <p>Memory-first console</p>
+          </div>
+        </div>
+
+        <form id="customer-form" class="panel-form">
+          <label>
+            User ID
+            <input id="user-id" name="user_id" value="alice" autocomplete="off" />
+          </label>
+          <label>
+            Channel
+            <select id="channel" name="channel">
+              <option value="web">Web</option>
+              <option value="email">Email</option>
+              <option value="slack">Slack</option>
+              <option value="zendesk">Zendesk</option>
+            </select>
+          </label>
+          <label>
+            Conversation
+            <input id="conversation-id" name="conversation_id" autocomplete="off" />
+          </label>
+          <label class="toggle-row">
+            <input id="force-escalation" type="checkbox" />
+            <span>Force escalation</span>
+          </label>
+        </form>
+
+        <section class="memory-admin">
+          <div class="section-heading">
+            <h2>Memories</h2>
+            <button id="refresh-memories" class="icon-button" type="button" title="Refresh memories">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 12a9 9 0 0 1-15.4 6.4L3 16m0 0v5h5m-5-5 2.6 2.4M3 12A9 9 0 0 1 18.4 5.6L21 8m0 0V3h-5m5 5-2.6-2.4" />
+              </svg>
+            </button>
+          </div>
+          <div id="memory-list" class="memory-list"></div>
+          <button id="delete-all-memories" class="danger-button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v5m4-5v5" />
+            </svg>
+            Delete user memory
+          </button>
+        </section>
+      </aside>
+
+      <section class="chat-column">
+        <header class="chat-header">
+          <div>
+            <p class="eyebrow">Live demo</p>
+            <h2>Customer conversation</h2>
+          </div>
+          <div id="service-status" class="status-pill">Checking</div>
+        </header>
+
+        <div id="chat-log" class="chat-log" aria-live="polite"></div>
+
+        <form id="chat-form" class="composer">
+          <textarea
+            id="message"
+            rows="3"
+            placeholder="Ask about billing, bugs, onboarding, account access, cancellation, or product questions."
+          ></textarea>
+          <button class="send-button" type="submit">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m22 2-7 20-4-9-9-4 20-7Z" />
+              <path d="M22 2 11 13" />
+            </svg>
+            Send
+          </button>
+        </form>
+      </section>
+
+      <aside class="inspector">
+        <section>
+          <div class="section-heading">
+            <h2>Agent Run</h2>
+            <span id="intent-badge" class="intent-badge">Idle</span>
+          </div>
+          <dl class="run-facts">
+            <div>
+              <dt>Escalation</dt>
+              <dd id="escalation-value">-</dd>
+            </div>
+            <div>
+              <dt>Saved</dt>
+              <dd id="saved-value">-</dd>
+            </div>
+            <div>
+              <dt>Conversation</dt>
+              <dd id="conversation-value">-</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section>
+          <h2>Memory Hits</h2>
+          <div id="memory-hits" class="evidence-list"></div>
+        </section>
+
+        <section>
+          <h2>Knowledge</h2>
+          <div id="knowledge-hits" class="evidence-list"></div>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>
