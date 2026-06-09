@@ -2,6 +2,9 @@
 
 Runnable customer support agent demo that combines **Mem0** (persistent user memory), **LangGraph** (workflow orchestration), and **FastAPI** (HTTP API). A **Next.js** frontend provides a full support console; a simpler static HTML UI ships with the backend at `/`.
 
+[![Watch the Demo]](https://youtu.be/kTwJ7zybbuQ)
+
+
 ## How It Works
 
 Every chat message flows through a linear six-step pipeline. The `SupportAgent` in `support_agent/graph.py` orchestrates this via LangGraph (or a sequential fallback when LangGraph is unavailable):
