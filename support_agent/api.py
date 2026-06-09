@@ -11,6 +11,8 @@ from support_agent.graph import SupportAgent
 from support_agent.models import (
     ChatRequest,
     ChatResponse,
+    CorrectMemoryRequest,
+    CorrectMemoryResponse,
     DeleteResponse,
     MarkMemoryRequest,
     MarkMemoryResponse,
@@ -98,6 +100,28 @@ def create_app(agent: SupportAgent | None = None) -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Memory update failed: {exc}") from exc
         return MarkMemoryResponse(memory=memory, message=f"Marked memory {memory_id} outdated.")
+
+    @app.post(
+        "/memories/{user_id}/{memory_id}/correct",
+        response_model=CorrectMemoryResponse,
+    )
+    def correct_memory(user_id: str, memory_id: str, request: CorrectMemoryRequest):
+        try:
+            memory = app.state.agent.memory_store.correct_memory(
+                user_id=user_id,
+                memory_id=memory_id,
+                corrected_text=request.corrected_text,
+                reason=request.reason,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Memory correction failed: {exc}") from exc
+        return CorrectMemoryResponse(
+            memory=memory,
+            message=f"Corrected memory {memory_id}.",
+            replaced_memory_id=memory_id,
+        )
 
     return app
 

@@ -8,6 +8,7 @@ import { CustomerPanel } from "@/components/customer-panel";
 import { MemoryAdmin } from "@/components/memory-admin";
 import { RunInspector } from "@/components/run-inspector";
 import {
+  correctMemory,
   deleteMemory,
   deleteUserMemories,
   getHealth,
@@ -172,6 +173,16 @@ export default function Home() {
     }
   }
 
+  async function handleCorrectMemory(memoryId: string, correctedText: string, reason: string) {
+    setAppError(null);
+    try {
+      await correctMemory(normalizedUserId, memoryId, correctedText, reason);
+      await refreshMemories(normalizedUserId);
+    } catch (error) {
+      setAppError(errorMessage(error));
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#f5f7fa] p-3 text-zinc-950 sm:p-4">
       <div className="mx-auto grid min-h-[calc(100vh-24px)] max-w-[1600px] gap-4 xl:grid-cols-[300px_minmax(420px,1fr)_360px]">
@@ -195,6 +206,7 @@ export default function Home() {
             onDeleteAll={handleDeleteAllMemories}
             onDeleteMemory={handleDeleteMemory}
             onMarkOutdated={handleMarkOutdated}
+            onCorrectMemory={handleCorrectMemory}
           />
         </div>
 

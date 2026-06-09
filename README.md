@@ -7,14 +7,14 @@ Runnable customer support agent demo that combines **Mem0** (persistent user mem
 Every chat message flows through a linear six-step pipeline. The `SupportAgent` in `support_agent/graph.py` orchestrates this via LangGraph (or a sequential fallback when LangGraph is unavailable):
 
 ```text
-identify_user -> retrieve_memory -> classify_intent -> fetch_knowledge -> respond_or_escalate -> save_memory
+identify_user -> classify_intent -> retrieve_memory -> fetch_knowledge -> respond_or_escalate -> save_memory
 ```
 
 | Step | What happens |
 |------|--------------|
 | **identify_user** | Assigns or reuses a `conversation_id` (generates a UUID if none is provided). |
-| **retrieve_memory** | Searches Mem0 or the local store for up to 5 relevant memories for the `user_id`. Queries are redacted before search. |
 | **classify_intent** | Keyword scoring maps the message to one of seven intents: `billing`, `bug`, `onboarding`, `cancellation`, `feature_request`, `account`, or `general`. |
+| **retrieve_memory** | Multi-scope Mem0 search: thread memories (`run_id`) plus profile memories (`user_id`), with intent-aware queries, reranking, keyword search, and outdated filtering. |
 | **fetch_knowledge** | Token overlap against baked-in policy and playbook entries (billing policy, bug triage, onboarding checklist, etc.). |
 | **respond_or_escalate** | If OpenRouter is configured, an LLM replies using memories, knowledge, intent, and escalation context. Otherwise a deterministic rule-based fallback is used. |
 | **save_memory** | The user/assistant turn is persisted unless sensitive data was detected. Metadata includes intent, channel, escalation status, and app/agent IDs. |
@@ -32,8 +32,23 @@ The app runs in two modes, controlled by `Settings` in `support_agent/config.py`
 
 Mem0 is isolated behind a small `MemoryStore` protocol in `support_agent/memory.py`. The rest of the app depends only on that interface, which keeps tests fast and allows offline operation without credentials.
 
-- **`Mem0MemoryStore`** — Uses the Mem0 `MemoryClient` for search, add, list, delete, and mark-outdated. Memories are scoped by `user_id` and tagged with `run_id` (conversation), `app_id`, and `agent_id`.
-- **`LocalMemoryStore`** — In-memory dict keyed by `user_id`. Summarizes messages into categories (`plan`, `preference`, `support_issue`, `conversation`), replaces old plan memories on update, skips outdated entries during search, and ranks by simple term overlap.
+- **`Mem0MemoryStore`** — Uses the Mem0 `MemoryClient` with enhanced retrieval (`rerank`, `keyword_search`, `threshold`, optional `enable_graph`), multi-scope search (thread + profile), selective `infer` for explicit facts, and delete-and-re-add correction via `correct_memory`.
+- **`LocalMemoryStore`** — In-memory dict keyed by `user_id` with the same `search_for_context` interface. Summarizes messages into categories (`plan`, `preference`, `support_issue`, `conversation`), replaces old plan memories on update, skips outdated entries during search, and ranks by term overlap with intent/category hints.
+
+#### Mem0 configuration
+
+Tune live Mem0 behavior in `.env`:
+
+```bash
+MEM0_ENABLE_GRAPH=false        # include entity relations on add/search
+MEM0_SEARCH_RERANK=true        # rerank semantic hits
+MEM0_SEARCH_KEYWORD=true       # blend keyword search for exact terms
+MEM0_SEARCH_THRESHOLD=0.3      # minimum similarity score
+MEM0_THREAD_TOP_K=3            # per-conversation memory hits
+MEM0_PROFILE_TOP_K=5           # cross-session customer memory hits
+```
+
+For best extraction quality in production, also configure **custom categories** and **custom instructions** in the Mem0 project dashboard (for example: `subscription_plan`, `open_support_issue`, `communication_preference`).
 
 ### Safety and Escalation
 
@@ -52,6 +67,7 @@ Mem0 is isolated behind a small `MemoryStore` protocol in `support_agent/memory.
 - `DELETE /memories/{user_id}` — Privacy wipe for a user.
 - `DELETE /memories/{user_id}/{memory_id}` — Delete a single memory.
 - `PATCH /memories/{user_id}/{memory_id}/mark-outdated` — Soft-invalidate stale memory.
+- `POST /memories/{user_id}/{memory_id}/correct` — Delete the old memory and store a corrected fact with `infer=false`.
 - `GET /health` — Reports live vs local mode.
 - `GET /` — Static browser console.
 
@@ -143,25 +159,170 @@ uv run pytest
 
 ## Demo Prompts
 
-Try these as the same `user_id` to see memory, escalation, and safety in action:
+Use the same `user_id` (for example `alice`) across prompts so memory carries over. Open the Next.js UI at `http://localhost:3000` or the static UI at `http://127.0.0.1:8000`. Watch the **Agent Run** panel for intent, memory scope, escalation, and linked entities.
+
+### Full demo script
+
+Use `conversation_id: demo-session-1` for steps 1–5, then switch to `demo-session-2` for step 6.
+
+| # | Prompt | What to verify |
+|---|--------|----------------|
+| 1 | `The invoice export is broken in Chrome.` | Intent: `bug`; memory saved |
+| 2 | `It still fails after refresh.` | Thread-scoped memory hit |
+| 3 | `Please keep answers short.` | Preference saved |
+| 4 | `I need onboarding help.` | Shorter reply; preference in memory hits |
+| 5 | `Actually, my plan is Pro now.` | Plan memory updated |
+| 6 | `My issue is still happening.` | Profile memory from step 1; escalation required |
+| 7 | `What plan am I on?` | Reply recalls Pro |
+| 8 | `My password is hunter2.` | Escalation required; no memory stored |
+
+### Multi-scope memory (thread + profile)
+
+**Conversation A** — keep the same `conversation_id` (for example `ticket-export-1`):
 
 ```text
 The invoice export is broken in Chrome.
-My issue is still happening.
-Please keep answers short.
-I need onboarding help.
-Actually, my plan is Pro now.
-What plan am I on?
-My password is hunter2.
+It still fails after I refresh the page.
 ```
 
-Expected behavior in local demo mode:
+Check the run inspector: memory hits should show **thread** scope.
 
-- **"Invoice export broken in Chrome"** — `bug` intent; memory saved.
-- **"My issue is still happening"** — Retrieves prior bug memory; escalates.
-- **"Please keep answers short"** — Preference memory stored; future replies are truncated.
-- **"My plan is Pro now"** — Replaces any older plan memory.
-- **"My password is hunter2"** — Escalates; nothing is stored.
+**Conversation B** — use a new `conversation_id` (for example `ticket-billing-2`):
+
+```text
+My issue is still happening.
+```
+
+Check the run inspector: you should see **profile** scope (prior bug from Conversation A) and escalation.
+
+### Intent-aware retrieval
+
+```text
+The dashboard export throws an error in Safari.
+I need onboarding help for my workspace.
+I was charged twice on my last invoice.
+```
+
+Confirm intent (`bug`, `onboarding`, `billing`) and that memory/knowledge hits align in the run inspector.
+
+### Preference memory
+
+```text
+Please keep answers short.
+I need onboarding help.
+```
+
+Expected: shorter reply; run inspector shows a preference memory hit with **profile** scope.
+
+### Plan memory and replacement
+
+```text
+My plan is Basic.
+Actually, my plan is Pro now.
+What plan am I on?
+```
+
+Expected: only **Pro** in the Memories panel; the agent references Pro in its reply.
+
+### Escalation and recurring bugs
+
+```text
+The invoice export is broken in Chrome.
+```
+
+Then in a new conversation:
+
+```text
+My issue is still happening.
+```
+
+Expected: **Escalation: Required** in the run inspector.
+
+### Sensitive data (no storage)
+
+```text
+My password is hunter2 and my card number is 4242 4242 4242 4242.
+```
+
+Expected: escalation required, **Saved: 0** (or a skip reason), and no new memories in the Memories panel.
+
+### Correct memory (UI: Correct button)
+
+```text
+My plan is Basic.
+```
+
+In Memories, click **Correct** on that memory and enter:
+
+```text
+User says their subscription plan is Enterprise.
+```
+
+Then chat:
+
+```text
+What plan am I on?
+```
+
+Expected: **Enterprise** in memories and in the reply; **Basic** is gone.
+
+### Mark outdated (excluded from retrieval)
+
+```text
+The export button fails when I click it.
+```
+
+In Memories, click **Outdated** on that memory. Then send:
+
+```text
+The export button fails when I click it again.
+```
+
+Expected: the outdated memory does **not** appear in **Memory Hits**.
+
+### Linked entities (live Mem0 with graph)
+
+Set in `.env` and restart the backend:
+
+```bash
+MEM0_ENABLE_GRAPH=true
+```
+
+Then:
+
+```text
+The invoice export is broken in Chrome on my Pro workspace.
+Actually, my plan is Pro now.
+```
+
+Check the **Linked Entities** section in the run inspector. With live Mem0 and graph enabled, relations come from Mem0; in local demo mode, relations are derived for support issues and plans.
+
+### Force escalation
+
+Enable **Force escalation** in the customer panel, then:
+
+```text
+Can you help me reset my notification settings?
+```
+
+Expected: escalation required even for a low-risk message.
+
+### Live Mem0 vs local demo
+
+| Mode | How to tell |
+|------|-------------|
+| **Local demo** | Status pill shows "Local demo"; graph relations are synthetic |
+| **Live Mem0** | Status pill shows "Live services"; rerank, keyword, and graph use real Mem0 APIs |
+
+For live mode, set `MEM0_API_KEY` and keep `SUPPORT_AGENT_OFFLINE_MODE` unset or set to `auto`. Optional tuning:
+
+```bash
+MEM0_SEARCH_RERANK=true
+MEM0_SEARCH_KEYWORD=true
+MEM0_THREAD_TOP_K=3
+MEM0_PROFILE_TOP_K=5
+MEM0_ENABLE_GRAPH=true
+```
 
 ## Notes
 

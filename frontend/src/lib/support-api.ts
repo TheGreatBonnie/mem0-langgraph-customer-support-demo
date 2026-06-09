@@ -16,12 +16,19 @@ export type ChatRequest = {
   force_escalation?: boolean;
 };
 
+export type MemoryRelation = {
+  source: string;
+  relationship: string;
+  target: string;
+};
+
 export type MemoryOut = {
   id: string;
   memory: string;
   metadata: Record<string, unknown>;
   categories: string[];
   score: number | null;
+  scope?: "thread" | "profile" | null;
 };
 
 export type KnowledgeOut = {
@@ -35,6 +42,7 @@ export type ChatResponse = {
   reply: string;
   intent: Intent;
   used_memories: MemoryOut[];
+  memory_relations: MemoryRelation[];
   knowledge_sources: KnowledgeOut[];
   escalation_required: boolean;
   conversation_id: string;
@@ -55,6 +63,12 @@ export type DeleteResponse = {
 export type MarkMemoryResponse = {
   memory: MemoryOut;
   message: string;
+};
+
+export type CorrectMemoryResponse = {
+  memory: MemoryOut;
+  message: string;
+  replaced_memory_id: string;
 };
 
 export type HealthResponse = {
@@ -102,6 +116,21 @@ export async function markMemoryOutdated(userId: string, memoryId: string, reaso
     {
       method: "PATCH",
       body: JSON.stringify({ reason }),
+    },
+  );
+}
+
+export async function correctMemory(
+  userId: string,
+  memoryId: string,
+  correctedText: string,
+  reason: string,
+) {
+  return requestJson<CorrectMemoryResponse>(
+    `/memories/${encodeURIComponent(userId)}/${encodeURIComponent(memoryId)}/correct`,
+    {
+      method: "POST",
+      body: JSON.stringify({ corrected_text: correctedText, reason }),
     },
   );
 }

@@ -7,7 +7,7 @@ from support_agent.classifier import classify_intent, should_escalate
 from support_agent.config import Settings, get_settings
 from support_agent.knowledge import KnowledgeBase
 from support_agent.memory import MemoryStore, create_memory_store
-from support_agent.models import ChatRequest, ChatResponse, Intent, KnowledgeOut, MemoryOut
+from support_agent.models import ChatRequest, ChatResponse, Intent, KnowledgeOut, MemoryOut, MemoryRelation
 from support_agent.safety import contains_sensitive_data, redacted_for_prompt
 
 
@@ -19,6 +19,7 @@ class SupportState(TypedDict, total=False):
     account_metadata: dict[str, Any]
     force_escalation: bool
     memories: list[MemoryOut]
+    memory_relations: list[MemoryRelation]
     knowledge_sources: list[KnowledgeOut]
     intent: Intent
     escalation_required: bool
@@ -58,6 +59,7 @@ class SupportAgent:
             reply=result["reply"],
             intent=result["intent"],
             used_memories=result.get("memories", []),
+            memory_relations=result.get("memory_relations", []),
             knowledge_sources=result.get("knowledge_sources", []),
             escalation_required=result["escalation_required"],
             conversation_id=result["conversation_id"],
@@ -72,8 +74,8 @@ class SupportAgent:
             return _SequentialGraph(
                 [
                     self._identify_user,
-                    self._retrieve_memory,
                     self._classify,
+                    self._retrieve_memory,
                     self._fetch_knowledge,
                     self._respond_or_escalate,
                     self._save_memory,
@@ -82,16 +84,16 @@ class SupportAgent:
 
         workflow = StateGraph(SupportState)
         workflow.add_node("identify_user", self._identify_user)
-        workflow.add_node("retrieve_memory", self._retrieve_memory)
         workflow.add_node("classify_intent", self._classify)
+        workflow.add_node("retrieve_memory", self._retrieve_memory)
         workflow.add_node("fetch_knowledge", self._fetch_knowledge)
         workflow.add_node("respond_or_escalate", self._respond_or_escalate)
         workflow.add_node("save_memory", self._save_memory)
 
         workflow.add_edge(START, "identify_user")
-        workflow.add_edge("identify_user", "retrieve_memory")
-        workflow.add_edge("retrieve_memory", "classify_intent")
-        workflow.add_edge("classify_intent", "fetch_knowledge")
+        workflow.add_edge("identify_user", "classify_intent")
+        workflow.add_edge("classify_intent", "retrieve_memory")
+        workflow.add_edge("retrieve_memory", "fetch_knowledge")
         workflow.add_edge("fetch_knowledge", "respond_or_escalate")
         workflow.add_edge("respond_or_escalate", "save_memory")
         workflow.add_edge("save_memory", END)
@@ -101,17 +103,6 @@ class SupportAgent:
         conversation_id = state.get("conversation_id") or f"support-{uuid4()}"
         return {"conversation_id": conversation_id}
 
-    def _retrieve_memory(self, state: SupportState) -> SupportState:
-        try:
-            memories = self.memory_store.search(
-                redacted_for_prompt(state["message"]),
-                user_id=state["user_id"],
-                top_k=5,
-            )
-            return {"memories": memories, "memory_error": None}
-        except Exception as exc:
-            return {"memories": [], "memory_error": str(exc)}
-
     def _classify(self, state: SupportState) -> SupportState:
         intent = classify_intent(state["message"])
         escalation_required = should_escalate(
@@ -120,6 +111,23 @@ class SupportAgent:
             force=state.get("force_escalation", False),
         )
         return {"intent": intent, "escalation_required": escalation_required}
+
+    def _retrieve_memory(self, state: SupportState) -> SupportState:
+        try:
+            context = self.memory_store.search_for_context(
+                query=redacted_for_prompt(state["message"]),
+                user_id=state["user_id"],
+                conversation_id=state["conversation_id"],
+                intent=state["intent"],
+                top_k=5,
+            )
+            return {
+                "memories": context.memories,
+                "memory_relations": context.relations,
+                "memory_error": None,
+            }
+        except Exception as exc:
+            return {"memories": [], "memory_relations": [], "memory_error": str(exc)}
 
     def _fetch_knowledge(self, state: SupportState) -> SupportState:
         query = f"{state['intent']} {state['message']}"
@@ -178,7 +186,13 @@ class SupportAgent:
     def _llm_reply(self, state: SupportState) -> str:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        memories = "\n".join(f"- {memory.memory}" for memory in state.get("memories", []))
+        memories = "\n".join(
+            f"- [{memory.scope or 'profile'}] {memory.memory}" for memory in state.get("memories", [])
+        )
+        relations = "\n".join(
+            f"- {relation.source} {relation.relationship} {relation.target}"
+            for relation in state.get("memory_relations", [])
+        )
         knowledge = "\n".join(
             f"- {source.title}: {source.content}" for source in state.get("knowledge_sources", [])
         )
@@ -191,6 +205,9 @@ Detected intent: {state['intent']}.
 
 Relevant customer memory:
 {memories or "- none"}
+
+Linked memory relations:
+{relations or "- none"}
 
 Support knowledge:
 {knowledge or "- none"}

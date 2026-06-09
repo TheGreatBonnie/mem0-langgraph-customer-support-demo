@@ -25,12 +25,19 @@ class ChatRequest(BaseModel):
     force_escalation: bool = False
 
 
+class MemoryRelation(BaseModel):
+    source: str
+    relationship: str
+    target: str
+
+
 class MemoryOut(BaseModel):
     id: str
     memory: str
     metadata: dict[str, Any] = Field(default_factory=dict)
     categories: list[str] = Field(default_factory=list)
     score: float | None = None
+    scope: Literal["thread", "profile"] | None = None
 
 
 class KnowledgeOut(BaseModel):
@@ -44,6 +51,7 @@ class ChatResponse(BaseModel):
     reply: str
     intent: Intent
     used_memories: list[MemoryOut]
+    memory_relations: list[MemoryRelation] = Field(default_factory=list)
     knowledge_sources: list[KnowledgeOut]
     escalation_required: bool
     conversation_id: str
@@ -68,3 +76,14 @@ class MarkMemoryRequest(BaseModel):
 class MarkMemoryResponse(BaseModel):
     memory: MemoryOut
     message: str
+
+
+class CorrectMemoryRequest(BaseModel):
+    corrected_text: str = Field(..., min_length=1)
+    reason: str = Field(default="Corrected by support admin")
+
+
+class CorrectMemoryResponse(BaseModel):
+    memory: MemoryOut
+    message: str
+    replaced_memory_id: str

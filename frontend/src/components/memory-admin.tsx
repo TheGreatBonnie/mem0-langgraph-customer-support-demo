@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { AlertTriangle, Brain, RefreshCw, Trash2 } from "lucide-react";
+import { AlertTriangle, Brain, PencilLine, RefreshCw, Trash2 } from "lucide-react";
 import type { MemoryOut } from "@/lib/support-api";
 
 type MemoryAdminProps = {
@@ -10,6 +10,7 @@ type MemoryAdminProps = {
   onDeleteAll: () => void;
   onDeleteMemory: (memoryId: string) => void;
   onMarkOutdated: (memoryId: string, reason: string) => void;
+  onCorrectMemory: (memoryId: string, correctedText: string, reason: string) => void;
 };
 
 export function MemoryAdmin({
@@ -20,6 +21,7 @@ export function MemoryAdmin({
   onDeleteAll,
   onDeleteMemory,
   onMarkOutdated,
+  onCorrectMemory,
 }: MemoryAdminProps) {
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
@@ -57,6 +59,12 @@ export function MemoryAdmin({
                 const reason = window.prompt("Reason", "Marked outdated by support admin");
                 if (reason !== null) onMarkOutdated(memory.id, reason);
               }}
+              onCorrect={() => {
+                const correctedText = window.prompt("Corrected memory text", memory.memory);
+                if (correctedText === null || !correctedText.trim()) return;
+                const reason = window.prompt("Reason", "Corrected by support admin");
+                if (reason !== null) onCorrectMemory(memory.id, correctedText.trim(), reason);
+              }}
             />
           ))
         ) : (
@@ -82,10 +90,12 @@ function MemoryItem({
   memory,
   onDelete,
   onMarkOutdated,
+  onCorrect,
 }: {
   memory: MemoryOut;
   onDelete: () => void;
   onMarkOutdated: () => void;
+  onCorrect: () => void;
 }) {
   const status = String(memory.metadata.status ?? "active");
   const category = String(memory.metadata.category ?? memory.categories[0] ?? "memory");
@@ -109,6 +119,14 @@ function MemoryItem({
         </span>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onCorrect}
+          className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-teal-200 px-2.5 text-xs font-semibold text-teal-800 transition hover:bg-teal-50"
+        >
+          <PencilLine size={14} aria-hidden="true" />
+          Correct
+        </button>
         <button
           type="button"
           onClick={onMarkOutdated}

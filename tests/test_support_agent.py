@@ -115,3 +115,74 @@ def test_chat_api_and_memory_admin_controls():
     deleted = client.delete("/memories/alice")
     assert deleted.status_code == 200
     assert client.get("/memories/alice").json()["memories"] == []
+
+
+def test_thread_scoped_memory_is_returned_in_same_conversation():
+    agent = make_agent()
+
+    first = agent.chat(
+        ChatRequest(
+            user_id="alice",
+            message="The export button fails in Safari.",
+            conversation_id="ticket-thread",
+        )
+    )
+    second = agent.chat(
+        ChatRequest(
+            user_id="alice",
+            message="It still fails after refresh.",
+            conversation_id="ticket-thread",
+        )
+    )
+
+    assert first.saved_memory_count == 1
+    assert second.used_memories
+    assert any(memory.scope == "thread" for memory in second.used_memories)
+
+
+def test_outdated_memory_is_excluded_from_retrieval():
+    agent = make_agent()
+
+    first = agent.chat(
+        ChatRequest(
+            user_id="alice",
+            message="The dashboard export is broken.",
+            conversation_id="ticket-a",
+        )
+    )
+    memory_id = agent.memory_store.list_user_memories("alice")[0].id
+    agent.memory_store.mark_memory_outdated("alice", memory_id, "No longer relevant")
+
+    second = agent.chat(
+        ChatRequest(
+            user_id="alice",
+            message="The dashboard export is broken again.",
+            conversation_id="ticket-b",
+        )
+    )
+
+    assert not any(memory.id == memory_id for memory in second.used_memories)
+
+
+def test_correct_memory_replaces_stored_fact():
+    agent = make_agent()
+    client = TestClient(create_app(agent))
+
+    agent.chat(ChatRequest(user_id="alice", message="My plan is Basic."))
+    memory_id = agent.memory_store.list_user_memories("alice")[0].id
+
+    corrected = client.post(
+        f"/memories/alice/{memory_id}/correct",
+        json={
+            "corrected_text": "User says their subscription plan is Pro.",
+            "reason": "Customer upgraded",
+        },
+    )
+    assert corrected.status_code == 200
+    payload = corrected.json()
+    assert payload["replaced_memory_id"] == memory_id
+    assert "Pro" in payload["memory"]["memory"]
+
+    memories = client.get("/memories/alice").json()["memories"]
+    assert len(memories) == 1
+    assert "Basic" not in memories[0]["memory"]

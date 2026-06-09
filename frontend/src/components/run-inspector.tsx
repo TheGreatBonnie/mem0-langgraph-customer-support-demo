@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { Brain, ClipboardCheck, Database } from "lucide-react";
 import type { ReactNode } from "react";
-import type { ChatResponse, MemoryOut } from "@/lib/support-api";
+import type { ChatResponse, MemoryOut, MemoryRelation } from "@/lib/support-api";
 
 type RunInspectorProps = {
   lastRun: ChatResponse | null;
@@ -52,8 +52,17 @@ export function RunInspector({ lastRun }: RunInspectorProps) {
             meta={memoryCategory(memory)}
             score={memory.score}
             status={String(memory.metadata.status ?? "active")}
+            scope={memory.scope ?? undefined}
           />
         )}
+      />
+
+      <EvidenceSection
+        icon={<Brain size={18} aria-hidden="true" />}
+        title="Linked Entities"
+        empty="No linked entities"
+        items={lastRun?.memory_relations ?? []}
+        renderItem={(relation) => <RelationItem relation={relation} />}
       />
 
       <EvidenceSection
@@ -132,11 +141,13 @@ function EvidenceItem({
   meta,
   score,
   status,
+  scope,
 }: {
   title: string;
   meta: string;
   score: number | null;
   status?: string;
+  scope?: string;
 }) {
   return (
     <article className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3">
@@ -145,6 +156,11 @@ function EvidenceItem({
         <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-zinc-600 ring-1 ring-zinc-200">
           {meta}
         </span>
+        {scope ? (
+          <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800 ring-1 ring-sky-100">
+            {scope}
+          </span>
+        ) : null}
         {status ? (
           <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-zinc-600 ring-1 ring-zinc-200">
             {status}
@@ -156,6 +172,17 @@ function EvidenceItem({
           </span>
         ) : null}
       </div>
+    </article>
+  );
+}
+
+function RelationItem({ relation }: { relation: MemoryRelation }) {
+  return (
+    <article className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3">
+      <p className="break-words text-sm leading-5 text-zinc-900">
+        {relation.source} <span className="text-zinc-500">{relation.relationship}</span>{" "}
+        {relation.target}
+      </p>
     </article>
   );
 }
