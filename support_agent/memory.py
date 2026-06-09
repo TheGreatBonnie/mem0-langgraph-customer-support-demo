@@ -154,16 +154,14 @@ class Mem0MemoryStore:
             _delete_memories_by_category(self, user_id, "plan")
 
         infer = not should_use_explicit_memory(user_message)
+        _ = assistant_reply  # kept for interface compatibility; not sent to Mem0
         add_kwargs: dict[str, Any] = {
-            "messages": [
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": assistant_reply},
-            ],
+            "messages": [{"role": "user", "content": user_message}],
             "user_id": user_id,
             "run_id": conversation_id,
             "agent_id": self.settings.agent_id,
             "app_id": self.settings.app_id,
-            "metadata": {**metadata, "category": category, "status": "active"},
+            "metadata": {**metadata, "category": category, "status": "active", "source": "user"},
             "infer": infer,
         }
         if self.settings.mem0_enable_graph:
@@ -350,6 +348,7 @@ class LocalMemoryStore:
         if contains_sensitive_data(user_message):
             return 0
 
+        _ = assistant_reply  # kept for interface compatibility; not stored as memory content
         summary, category = _summarize_user_message(user_message)
         created_at = datetime.now(UTC).isoformat()
         memory_metadata = {
@@ -357,6 +356,7 @@ class LocalMemoryStore:
             "conversation_id": conversation_id,
             "created_at": created_at,
             "status": "active",
+            "source": "user",
             "local_demo": True,
             "explicit_memory": should_use_explicit_memory(user_message),
         }

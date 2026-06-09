@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 from fastapi.testclient import TestClient
 
 from support_agent.api import create_app
 from support_agent.config import Settings
 from support_agent.graph import SupportAgent
-from support_agent.memory import LocalMemoryStore
+from support_agent.memory import LocalMemoryStore, Mem0MemoryStore
 from support_agent.models import ChatRequest
 
 
@@ -186,3 +188,41 @@ def test_correct_memory_replaces_stored_fact():
     memories = client.get("/memories/alice").json()["memories"]
     assert len(memories) == 1
     assert "Basic" not in memories[0]["memory"]
+
+
+def test_stored_memory_does_not_include_agent_reply_text():
+    agent = make_agent()
+
+    response = agent.chat(ChatRequest(user_id="alice", message="I need onboarding help."))
+    memories = agent.memory_store.list_user_memories("alice")
+
+    assert response.saved_memory_count == 1
+    assert len(memories) == 1
+    assert memories[0].metadata.get("source") == "user"
+    assert "connecting the workspace" not in memories[0].memory.lower()
+    assert "onboarding help" in memories[0].memory.lower()
+
+
+def test_mem0_add_interaction_sends_only_user_message():
+    settings = Settings(
+        openrouter_api_key=None,
+        mem0_api_key="test-key",
+        offline_mode="false",
+    )
+    with patch("mem0.MemoryClient") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.add.return_value = {"results": [{}]}
+
+        store = Mem0MemoryStore(settings)
+        store.add_interaction(
+            user_id="alice",
+            conversation_id="conv-1",
+            user_message="My plan is Pro.",
+            assistant_reply="Great, I see you are on the Pro plan with premium billing support.",
+            metadata={"intent": "general"},
+        )
+
+        call_kwargs = mock_client.add.call_args.kwargs
+        assert call_kwargs["messages"] == [{"role": "user", "content": "My plan is Pro."}]
+        assert call_kwargs["metadata"]["source"] == "user"

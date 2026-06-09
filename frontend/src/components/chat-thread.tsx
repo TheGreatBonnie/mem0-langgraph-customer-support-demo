@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { Bot, UserRound } from "lucide-react";
+import { ChatMarkdown } from "@/components/chat-markdown";
 
 export type ChatMessage = {
   id: string;
@@ -38,7 +39,11 @@ export function ChatThread({ messages }: ChatThreadProps) {
               <Bot size={15} aria-hidden="true" />
             )}
           </div>
-          <p className="min-w-0 whitespace-pre-wrap break-words">{message.text}</p>
+          {message.role === "error" ? (
+            <p className="min-w-0 whitespace-pre-wrap wrap-break-word">{message.text}</p>
+          ) : (
+            <ChatMarkdown content={message.text} />
+          )}
         </article>
       ))}
     </div>
